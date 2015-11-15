@@ -2,19 +2,38 @@
 <html>
 	<head>
 		<title>LMC Mixer Webface</title>
+		<link rel="stylesheet" type="text/css" href="style.css" />
+		<script src="ds.js"></script>
+		<script src="fader.js"></script>
+		<script src="websock.js"></script>
+		<script src="js.js"></script>
 	</head>
-	<body>
+	<body onload="run()">
 		<h1>LMC Mixer Webface</h1>	
-
+		<div id="status">
+			Disconnected, uninitialized
+		</div>
 		<div id="outsel">
 			<a>1/2</a>
 			<a>3/4</a>
-			<a>5/6</a>
+			<a class="selected">5/6</a>
 			<a>7/8</a>
 		</div>
+		<hr />
+		<div id="faders">
+		</div>
 
-		<div id="sliders">
-			
+		<div style="display: none" id="template">
+			<div class="fader">
+				<div class="pan_container">
+					<div class="panorama"></div>
+				</div>
+				<div class="vol_container">
+					<div class="volume"></div>
+				</div>
+				<div class="fader_name">Unnamed</div>
+			</div>
 		</div>
 	</body>
 </html>
+

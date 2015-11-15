@@ -2,6 +2,8 @@
 
 WebsockFrontend::WebsockFrontend() {
 	printf("WebsockFrontend::WebsockFrontend()\n");
+
+	this->inputnames = 0;
 }
 WebsockFrontend::~WebsockFrontend() {
 	printf("WebsockFrontend::~WebsockFrontend()\n");
@@ -68,6 +70,29 @@ void WebsockFrontend::Stop() {
 	this->thrd.join();
 }
 
+WSClient * WebsockFrontend::NewClient(int fd) {
+	WSClient * ret = new WSClient();
+	ret->fd = fd;
+
+	return ret;
+}
+
+void WebsockFrontend::CloseClient(WSClient * client) {
+	printf("WebsockFrontend::CloseClient()\n");
+
+	epoll_event evt;
+	if (epoll_ctl(this->epfd, EPOLL_CTL_DEL, client->fd, &evt) != 0) {
+		perror("WebsockFrontend::CloseClient: epoll_ctl delete failed");
+	}
+
+	if (close(client->fd) != 0) {
+		perror("WebsockFrontend::CloseClient: close failed");
+	}
+
+	delete client;
+	printf("WebsockFrontend::CloseClient: Client removed\n");
+}
+
 void WebsockFrontend::Accept() {
 	printf("WebsockFrontend::Accept()\n");
 	sockaddr_in addr;
@@ -80,18 +105,94 @@ void WebsockFrontend::Accept() {
 	}
 
 	char straddr[INET_ADDRSTRLEN];
-	printf("Somebody connected: %s, port %d\n", inet_ntop(AF_INET, &addr.sin_addr, straddr, sizeof(straddr)), ntoh(addr.sin_port));
+	printf("WebsockFrontend::Accept: connected: %s, port %d\n", inet_ntop(AF_INET, &addr.sin_addr, straddr, sizeof(straddr)), ntohs(addr.sin_port));
+
+	WSClient * client = this->NewClient(fd);
+
+	epoll_event evt;
+	evt.data.ptr = client;
+	evt.events = EPOLLIN;// | EPOLLRDHUP;
+
+	if (epoll_ctl(this->epfd, EPOLL_CTL_ADD, fd, &evt) != 0) {
+		perror("WebsockFrontend::Accept: epoll_ctl add accepted socket failed");
+
+		this->CloseClient(client);
+
+		return;
+	}
+
+
+	this->SendHello(client);
 }
+
+void WebsockFrontend::ProcessEvent(WSClient * client) {
+	char buffer[1024];
+	int rd = read(client->fd, buffer, sizeof(buffer));
+
+	if (rd == 0) { // disconnected? 
+		this->CloseClient(client);
+		return;
+	}
+
+
+}
+
 
 void WebsockFrontend::RunThrd() {
 	epoll_event event;
 	while(this->running) {
-		int wait = epoll_wait(this->epfd, &event, 1, 500);
+		int wait = epoll_wait(this->epfd, &event, 1, 1000);
 
-		if (wait == 0) { printf("."); fflush(stdout); continue; }
+		if (wait == 0) {  // nothing has arrived
+			printf("."); 
+			fflush(stdout); 
+			continue; 
+		}
 
-		if(event.data.u64 == 0) { this->Accept(); continue; }
+		if(event.data.u64 == 0) {  // read possible on main socket -> client connected
+			this->Accept(); 
+			continue; 
+		}
+
+		if (event.events == EPOLLIN) {
+			this->ProcessEvent((WSClient*)event.data.ptr);
+		}
+		else {
+			printf("eeeeee: %d\n", event.events);
+		}
+	}
+}
+
+void WebsockFrontend::SetInputNames(const char * const * inputnames) {
+	this->inputnames = inputnames;
+}
+
+void WebsockFrontend::SendHello(WSClient * client) {
+	char buf[1024];
+
+	strcpy(buf, "LMCM"); // header
+	strcpy(buf + 4, "HELLO"); // packet type
+	buf[9] = INPUTS; // Number of INputs
+	buf[10] = OUTPUTS; // Number of OUTputs
 
 
+	char * ptr = &buf[11];
+	if (this->inputnames != 0) {
+		for (int i = 0; i < INPUTS; i++) {
+			*ptr++ = strlen(this->inputnames[i]);
+			strcpy(ptr, this->inputnames[i]);
+			ptr += strlen(this->inputnames[i]);
+		}
+	}
+	else {
+		*ptr++ = 0;
+	}
+
+
+	size_t bufs = ptr - buf;
+	int snd = send(client->fd, buf, bufs, 0);
+
+	if (snd != bufs) {
+		printf("WebsockFrontend::SendHello: Incomplete write (%d of %d)\n", snd, bufs);
 	}
 }

@@ -12,12 +12,20 @@ void sig(int sg) {
 	run = false;
 }
 
+const char * const names[] = {"Vox 1", "Gtr 1", "Vox 2", "Gtr 2", "Bass", "Kick", "Snare", "OH"};
+
 int main(int argc, char ** argv) {
 	signal(SIGINT, sig);
+	
 
 	WebsockFrontend wf;
-	wf.Init();
-	wf.Run();
+	if (wf.Init()) {
+		wf.SetInputNames(names);
+		wf.Run();
+	}
+	else {
+		printf("Cannot run WebSock frontend!\n");
+	}
 
 	run = true;
 	while(run) {
